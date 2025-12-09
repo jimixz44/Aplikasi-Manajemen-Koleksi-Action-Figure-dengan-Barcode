@@ -15,9 +15,3 @@ pip install -r requirements.txt
 streamlit run main.py
 ```
 
-## Deploy ke Streamlit Cloud
-
-1. Push repository ini ke GitHub
-2. Buka [share.streamlit.io](https://share.streamlit.io)
-3. Login dengan GitHub dan pilih repository ini
-4. Deploy!
