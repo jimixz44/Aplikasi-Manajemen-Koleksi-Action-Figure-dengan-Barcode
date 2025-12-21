@@ -12,6 +12,6 @@ Aplikasi manajemen koleksi action figure dengan fitur:
 
 ```bash
 pip install -r requirements.txt
-streamlit run main.py
+python -m streamlit run main.py
 ```
 
