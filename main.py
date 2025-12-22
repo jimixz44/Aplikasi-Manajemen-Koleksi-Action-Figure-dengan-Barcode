@@ -161,11 +161,10 @@ if menu == "Koleksi":
     if df.empty:
         st.info("Belum ada koleksi.")
     else:
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
         c1.metric("Total", len(df))
         c2.metric("Harga Beli", format_rupiah(df['Harga Beli'].sum()))
         c3.metric("Harga Pasar", format_rupiah(df['Harga Pasar'].sum()))
-        c4.metric("Keuntungan", format_rupiah(df['Harga Pasar'].sum() - df['Harga Beli'].sum()))
         st.divider()
         
         col1, col2 = st.columns(2)
@@ -226,18 +225,24 @@ elif menu == "Scan":
     df = muat_data()
     if 'scan_id' not in st.session_state:
         st.session_state.scan_id = ""
+    if 'scan_attempted' not in st.session_state:
+        st.session_state.scan_attempted = False
+    if 'scan_key' not in st.session_state:
+        st.session_state.scan_key = 0
     
     tab1, tab2, tab3 = st.tabs(["Manual", "Kamera", "Upload"])
     
     with tab1:
         c1, c2 = st.columns([3, 1])
-        id_input = c1.text_input("ID Figure", placeholder="AF001", label_visibility="collapsed")
+        id_input = c1.text_input("ID Figure", placeholder="AF001", label_visibility="collapsed", key=f"manual_input_{st.session_state.scan_key}")
         if c2.button("Cari", use_container_width=True) and id_input:
             st.session_state.scan_id = id_input
+            st.session_state.scan_attempted = True
     
     with tab2:
-        foto = st.camera_input("Ambil foto barcode")
+        foto = st.camera_input("Ambil foto barcode", key=f"camera_{st.session_state.scan_key}")
         if foto:
+            st.session_state.scan_attempted = True
             st.image(foto, width=300)
             data_hasil, tipe = decode_barcode(foto.getvalue())
             if data_hasil:
@@ -247,8 +252,9 @@ elif menu == "Scan":
                 st.error("Barcode tidak terdeteksi")
     
     with tab3:
-        berkas = st.file_uploader("Upload gambar", type=['png', 'jpg', 'jpeg'])
+        berkas = st.file_uploader("Upload gambar", type=['png', 'jpg', 'jpeg'], key=f"upload_{st.session_state.scan_key}")
         if berkas:
+            st.session_state.scan_attempted = True
             st.image(berkas, width=300)
             data_hasil, tipe = decode_barcode(berkas.getvalue())
             if data_hasil:
@@ -257,6 +263,7 @@ elif menu == "Scan":
             else:
                 st.error("Barcode tidak terdeteksi")
     
+    # Tampilkan hasil jika ada scan_id
     if st.session_state.scan_id:
         hasil = df[df['ID'].str.upper() == st.session_state.scan_id.upper()]
         st.divider()
@@ -269,9 +276,14 @@ elif menu == "Scan":
             c1.write(f"**ID:** {baris['ID']}\n\n**Seri:** {baris['Seri']}\n\n**Kondisi:** {baris['Kondisi']}\n\n**Beli:** {format_rupiah(baris['Harga Beli'])}\n\n**Pasar:** {format_rupiah(baris['Harga Pasar'])}")
             with c2:
                 tampilkan_barcode(baris['ID'], "scan")
-        
-        if st.button("Reset", key="reset_scan"):
+    
+    # Tombol Reset muncul jika sudah ada percobaan scan (baik berhasil maupun gagal)
+    if st.session_state.scan_attempted or st.session_state.scan_id:
+        st.divider()
+        if st.button("Reset", key="reset_scan", use_container_width=True):
             st.session_state.scan_id = ""
+            st.session_state.scan_attempted = False
+            st.session_state.scan_key += 1  # Increment key untuk clear semua widget
             st.rerun()
 
 
