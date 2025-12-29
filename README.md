@@ -1,6 +1,10 @@
 # Aplikasi-Manajemen-Koleksi-Action-Figure-dengan-Barcode
 
 Tugas Kelompok 4
+1. Fadhli Fadriansyah (24020057)
+2. Annisa Syifa Ekaputri (24020075)
+3. Mutiara Fathin Najiah (24020078)
+4. Gema Asmara (24020085)
 
 Aplikasi manajemen koleksi action figure dengan fitur:
 - CRUD (Create, Read, Update, Delete) koleksi
@@ -8,7 +12,7 @@ Aplikasi manajemen koleksi action figure dengan fitur:
 - Scan barcode via kamera atau upload gambar
 - Data tersimpan di Excel
 
-## Cara Menjalankan
+## Cara Menjalankan 
 
 ### 1. Install Python Dependencies
 
@@ -22,20 +26,4 @@ pip install -r requirements.txt
 streamlit run main.py
 ```
 
-> ✅ **Tidak perlu install Visual C++ atau software tambahan lainnya!**
 
-## Troubleshooting
-
-### Error: "Cannot add data" / Gagal simpan
-- Tutup file `data.xlsx` jika sedang dibuka di Excel
-- Pastikan folder memiliki izin write
-
-### Barcode tidak terdeteksi
-- Pastikan gambar barcode jelas dan tidak blur
-- Pastikan pencahayaan cukup
-- Coba dengan barcode yang lebih besar di layar
-
-### Error: OpenCV versi lama
-```bash
-pip install --upgrade opencv-python-headless
-```
