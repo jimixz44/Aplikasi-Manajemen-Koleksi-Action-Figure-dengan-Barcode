@@ -12,6 +12,6 @@ openpyxl>=3.1.2
 python-barcode>=0.15.1
 Pillow>=10.0.0
 
-# Barcode Scanning (zxing-cpp lebih akurat & support banyak format)
+# Barcode Scanning 
 opencv-python-headless>=4.8.0
 zxing-cpp>=2.2.0
