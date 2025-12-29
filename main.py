@@ -28,9 +28,11 @@ def muat_data():
 def simpan_data(df):
     try:
         df.to_excel(NAMA_FILE_DATA, index=False)
-        return True
-    except:
-        return False
+        return True, None
+    except PermissionError:
+        return False, "File data.xlsx sedang dibuka di program lain. Tutup file tersebut dan coba lagi."
+    except Exception as e:
+        return False, f"Gagal menyimpan: {str(e)}"
 
 def buat_id_baru(df):
     if df.empty:
@@ -41,7 +43,8 @@ def buat_id_baru(df):
 def buat_barcode(id_figure):
     try:
         writer = ImageWriter()
-        writer.set_options({'module_width': 0.4, 'module_height': 8.0, 'quiet_zone': 2.0, 'font_size': 10, 'text_distance': 3.0})
+        # Perbesar module_width agar garis lebih tebal dan mudah dibaca kamera
+        writer.set_options({'module_width': 0.8, 'module_height': 10.0, 'quiet_zone': 3.0, 'font_size': 14, 'text_distance': 4.0})
         bc = barcode.get_barcode_class('code128')(str(id_figure), writer=writer)
         buffer = BytesIO()
         bc.write(buffer)
@@ -57,82 +60,52 @@ def format_rupiah(angka):
         return f"Rp {angka}"
 
 def decode_barcode(gambar_bytes):
+    """
+    Decode barcode menggunakan zxing-cpp.
+    Library ini jauh lebih powerful, support banyak format (1D & 2D), 
+    dan tidak membutuhkan Visual C++ manual.
+    """
     try:
-        from pyzbar.pyzbar import decode
         import cv2
         import numpy as np
-        
+        import zxingcpp
+    except ImportError as e:
+        return None, f"Library {e} belum terinstall. Coba: pip install -r requirements.txt"
+    
+    try:
         # Konversi bytes ke gambar
         arr = np.frombuffer(gambar_bytes, np.uint8)
         gambar = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         
         if gambar is None:
-            return None, None
+            return None, "Gagal membaca gambar"
         
-        # Konversi ke abu-abu (grayscale)
-        abu = cv2.cvtColor(gambar, cv2.COLOR_BGR2GRAY)
+        # 1. Coba scan langsung (zxing-cpp sangat pintar membaca gambar mentah)
+        results = zxingcpp.read_barcodes(gambar)
         
-        # Daftar metode preprocessing yang akan dicoba
-        daftar_gambar = []
+        # 2. Jika gagal, coba preprocessing (grayscale + threshold)
+        if not results:
+            gray = cv2.cvtColor(gambar, cv2.COLOR_BGR2GRAY)
+            results = zxingcpp.read_barcodes(gray)
         
-        # 1. Gambar asli berwarna
-        daftar_gambar.append(gambar)
+        if not results:
+            # Coba contrast enhancement
+            gray = cv2.cvtColor(gambar, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            results = zxingcpp.read_barcodes(enhanced)
+
+        if results:
+            # Ambil hasil pertama
+            for res in results:
+                # Filter jika kosong
+                if res.text:
+                    return res.text, "OK"
         
-        # 2. Abu-abu (grayscale)
-        daftar_gambar.append(abu)
-        
-        # 3. Bilateral filter (pengurangan noise sambil mempertahankan tepi)
-        bilateral = cv2.bilateralFilter(abu, 9, 75, 75)
-        daftar_gambar.append(bilateral)
-        
-        # 4. Binary threshold sederhana
-        _, biner = cv2.threshold(abu, 127, 255, cv2.THRESH_BINARY)
-        daftar_gambar.append(biner)
-        
-        # 5. Inverted binary threshold (untuk background gelap)
-        _, biner_inv = cv2.threshold(abu, 127, 255, cv2.THRESH_BINARY_INV)
-        daftar_gambar.append(biner_inv)
-        
-        # 6. Adaptive threshold Gaussian
-        adaptive_gauss = cv2.adaptiveThreshold(abu, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        daftar_gambar.append(adaptive_gauss)
-        
-        # 7. Adaptive threshold Mean
-        adaptive_mean = cv2.adaptiveThreshold(abu, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
-        daftar_gambar.append(adaptive_mean)
-        
-        # 8. CLAHE (peningkatan kontras)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        clahe_img = clahe.apply(abu)
-        daftar_gambar.append(clahe_img)
-        
-        # 9. Otsu's thresholding (threshold otomatis)
-        _, otsu = cv2.threshold(abu, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        daftar_gambar.append(otsu)
-        
-        # 10. Operasi morfologi closing (menutup celah)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        morph = cv2.morphologyEx(biner, cv2.MORPH_CLOSE, kernel)
-        daftar_gambar.append(morph)
-        
-        # 11. Sharpening (penajaman tepi)
-        kernel_sharp = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        sharpened = cv2.filter2D(abu, -1, kernel_sharp)
-        daftar_gambar.append(sharpened)
-        
-        # Coba decode setiap gambar yang sudah diproses
-        for gambar_proses in daftar_gambar:
-            hasil = decode(gambar_proses)
-            if hasil:
-                # Barcode ditemukan, kembalikan hasilnya
-                return hasil[0].data.decode('utf-8'), hasil[0].type
-        
-        # Jika tidak ditemukan, kembalikan None
         return None, None
         
     except Exception as e:
-        # Gagal silent, bisa log error untuk debugging
-        return None, None
+        return None, f"Error: {str(e)}"
 
 def tampilkan_barcode(id_figure, key_suffix=""):
     bc = buat_barcode(id_figure)
@@ -173,7 +146,7 @@ if menu == "Koleksi":
         
         data = df.copy()
         if cari:
-            data = data[data['Nama Figure'].str.contains(cari, case=False, na=False) | data['Seri'].str.contains(cari, case=False, na=False)]
+            data = data[data['Nama Figure'].astype(str).str.contains(cari, case=False, na=False) | data['Seri'].astype(str).str.contains(cari, case=False, na=False)]
         if seri != "Semua":
             data = data[data['Seri'] == seri]
         
@@ -207,8 +180,11 @@ elif menu == "Tambah":
             if nama and seri:
                 baru = pd.DataFrame([{'ID': id_baru, 'Nama Figure': nama, 'Seri': seri, 'Kondisi': kondisi, 
                                      'Harga Beli': beli, 'Harga Pasar': pasar if pasar > 0 else beli}])
-                if simpan_data(pd.concat([df, baru], ignore_index=True)):
+                sukses, error_msg = simpan_data(pd.concat([df, baru], ignore_index=True))
+                if sukses:
                     st.session_state.tersimpan = {'id': id_baru, 'nama': nama}
+                else:
+                    st.error(error_msg or "Gagal menyimpan data")
             else:
                 st.error("Nama dan Seri wajib diisi!")
     
@@ -246,10 +222,16 @@ elif menu == "Scan":
             st.image(foto, width=300)
             data_hasil, tipe = decode_barcode(foto.getvalue())
             if data_hasil:
-                st.success(f"Terdeteksi: **{data_hasil}** ({tipe})")
-                st.session_state.scan_id = data_hasil
+                if tipe and tipe.startswith("ERROR") or tipe and "tidak" in str(tipe).lower():
+                    st.error(tipe or "Barcode tidak terdeteksi")
+                else:
+                    st.success(f"Terdeteksi: **{data_hasil}** ({tipe})")
+                    st.session_state.scan_id = data_hasil
             else:
-                st.error("Barcode tidak terdeteksi")
+                if tipe:
+                    st.error(tipe)
+                else:
+                    st.error("Barcode tidak terdeteksi. Pastikan gambar jelas dan barcode terlihat.")
     
     with tab3:
         berkas = st.file_uploader("Upload gambar", type=['png', 'jpg', 'jpeg'], key=f"upload_{st.session_state.scan_key}")
@@ -258,14 +240,20 @@ elif menu == "Scan":
             st.image(berkas, width=300)
             data_hasil, tipe = decode_barcode(berkas.getvalue())
             if data_hasil:
-                st.success(f"Terdeteksi: **{data_hasil}** ({tipe})")
-                st.session_state.scan_id = data_hasil
+                if tipe and tipe.startswith("ERROR") or tipe and "tidak" in str(tipe).lower():
+                    st.error(tipe or "Barcode tidak terdeteksi")
+                else:
+                    st.success(f"Terdeteksi: **{data_hasil}** ({tipe})")
+                    st.session_state.scan_id = data_hasil
             else:
-                st.error("Barcode tidak terdeteksi")
+                if tipe:
+                    st.error(tipe)
+                else:
+                    st.error("Barcode tidak terdeteksi. Pastikan gambar jelas dan barcode terlihat.")
     
     # Tampilkan hasil jika ada scan_id
     if st.session_state.scan_id:
-        hasil = df[df['ID'].str.upper() == st.session_state.scan_id.upper()]
+        hasil = df[df['ID'].astype(str).str.upper() == st.session_state.scan_id.upper()]
         st.divider()
         if hasil.empty:
             st.warning(f"ID **{st.session_state.scan_id}** tidak ditemukan")
@@ -326,9 +314,12 @@ elif menu == "Kelola":
                         df.at[indeks, 'Kondisi'] = kondisi
                         df.at[indeks, 'Harga Beli'] = beli
                         df.at[indeks, 'Harga Pasar'] = pasar
-                        simpan_data(df)
-                        st.session_state.edit = None
-                        st.rerun()
+                        sukses, error_msg = simpan_data(df)
+                        if sukses:
+                            st.session_state.edit = None
+                            st.rerun()
+                        else:
+                            st.error(error_msg or "Gagal menyimpan perubahan")
                     if s2.form_submit_button("Batal", use_container_width=True):
                         st.session_state.edit = None
                         st.rerun()
@@ -337,9 +328,12 @@ elif menu == "Kelola":
                 st.warning(f"Hapus **{baris['Nama Figure']}**?")
                 h1, h2 = st.columns(2)
                 if h1.button("Ya", key=f"y_{baris['ID']}", type="primary"):
-                    simpan_data(df[df['ID'] != baris['ID']])
-                    st.session_state.hapus = None
-                    st.rerun()
+                    sukses, error_msg = simpan_data(df[df['ID'] != baris['ID']])
+                    if sukses:
+                        st.session_state.hapus = None
+                        st.rerun()
+                    else:
+                        st.error(error_msg or "Gagal menghapus data")
                 if h2.button("Batal", key=f"n_{baris['ID']}"):
                     st.session_state.hapus = None
                     st.rerun()
